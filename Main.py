@@ -243,6 +243,8 @@ class Matter():
 
     def CanReplace(self,Other,Direction=(0,0)):
         if Other:
+            if self.Element == Other.Element:
+                return False
             OtherDensity = Other.GetDensity()
             MyDensity = self.GetDensity()
             Operator = "=="
@@ -251,9 +253,7 @@ class Matter():
             elif Direction[1] > 0: # other going down
                 Operator = ">"
             else:
-                if self.Element == Other.Element:
-                    return False
-                return True
+                Operator = ">"
 
             Verdict = eval(f"OtherDensity {Operator} MyDensity")
             return Verdict
