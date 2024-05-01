@@ -15,6 +15,7 @@ class Box():
         self.__M2Cooldown = 200
         self.__PauseDebouce = 0
         self.__PauseCooldown = 200
+        self.__Temperature = 15
         
         self.__Buttons = []
         self.__ButtonYSize = 50
@@ -58,6 +59,9 @@ class Box():
         else:
             return EDGE
 
+    def GetTemperature(self):
+        return self.__Temperature
+
     def RemoveAtPos(self,Pos):
         Object = self.GetObjectFromPos(Pos)
         if Object != EDGE:
@@ -87,14 +91,17 @@ class Box():
             return True
         return False
         
-    def CreateAtPos(self,Pos,Type):
+    def CreateAtPos(self,Pos,Type,Temperature=None):
         if not Type in Elements.keys():
             if self.GetObjectFromPos(Pos) != VOID:
                 self.RemoveAtPos(Pos)
             return
         NewElement = Elements[Type]
         if self.GetObjectFromPos(Pos) == VOID:
-            NewElement = NewElement(Pos,self)
+            if Temperature == None:
+                Temperature = self.__Temperature
+                
+            NewElement = NewElement(Pos,self,Temperature)
             self.__ObjectQueue.append(NewElement)
             self.__Inside[Pos[1]][Pos[0]] = NewElement
             
@@ -174,7 +181,7 @@ class Box():
         XSize = int(ScreenWidth // len(PlaceableElementsList))
         for X,Element in enumerate(PlaceableElementsList):
             if Element in Elements:
-                El = Elements[Element]((0,0),self)
+                El = Elements[Element]((0,0),self,self.__Temperature)
             else:
                 El = "DELETE"
             NewButton = Button(self,El,X*XSize,0,XSize,YSize)
@@ -213,11 +220,11 @@ class Button:
 
 
 class Matter():
-    def __init__(self,Pos,Parent):
+    def __init__(self,Pos,Parent,Temperature):
         self._X = Pos[0]
         self._Y = Pos[1]
         self._ParentBox = Parent
-        self._Temperature = 15
+        self._Temperature = Temperature
         self._TimeSinceLastMove = 0
         self._SkipChance = 0.25
         self._Skips = 0
@@ -271,25 +278,30 @@ class Matter():
         self._Skips = 0
         return False
 
-class Solid(Matter):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
-
     def Tick(self):
+        if self._DecideSkip():
+            return True
         self._TimeSinceLastMove += 1
+        if self._Temperature < self._ParentBox.GetTemperature():
+            self._Temperature += 1
+        elif self._Temperature > self._ParentBox.GetTemperature():
+            self._Temperature -= 1
         return
+
+class Solid(Matter):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
     
 
 
 class Falling(Solid):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self._SkipChance = 0.1
 
     def Tick(self):
-        if self._DecideSkip():
+        if super().Tick():
             return True
-        
         # Try down, down left then down right
         Directions = [(0,1)]
         if random.random() > 0.50:
@@ -306,18 +318,38 @@ class Falling(Solid):
         self._TimeSinceLastMove += 1
 
 class Sand(Falling):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "sand"
         self.DefaultColour = (200,170,0)
         Red = self.DefaultColour[0] + random.randrange(-5,5)
         Green = self.DefaultColour[1] + random.randrange(-1,1)
         Blue = self.DefaultColour[2]
         self.Colour = (Red,Green,Blue)
+    def Tick(self):
+        if super().Tick():
+            return True
+
+        if self._TimeSinceLastMove < 150:
+            return
+        for Y in range(1,10):
+            AboveObject = self._ParentBox.GetObjectFromPos((self._X,self._Y-Y))
+            if AboveObject == VOID or AboveObject == EDGE:
+                break
+            if AboveObject.Element != "sand":
+                if AboveObject.Element == "sandstone":
+                    self._ParentBox.RemoveAtPos(self.GetPos())
+                    self._ParentBox.CreateAtPos(self.GetPos(),"sandstone",self._Temperature)
+
+                break
+        else:
+            self._ParentBox.RemoveAtPos(self.GetPos())
+            self._ParentBox.CreateAtPos(self.GetPos(),"sandstone",self._Temperature)
+            
 
 class Dirt(Falling):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "dirt"
         self.DefaultColour = (204,146,29)
         Red = self.DefaultColour[0] + random.randrange(-10,10)
@@ -328,36 +360,51 @@ class Dirt(Falling):
     def Tick(self):
         if super().Tick():
             return True
-        AboveObject = self._ParentBox.GetObjectFromPos((self._X,self._Y-1))
-        if AboveObject != VOID and AboveObject != EDGE and AboveObject.Element == "water":
-            self._ParentBox.RemoveAtPos(AboveObject.GetPos())
-            self._ParentBox.RemoveAtPos(self.GetPos())
-            self._ParentBox.CreateAtPos(self.GetPos(),"mud")
+        
+        DirtAbove = 0
+        for Y in range(1,10):
+            AboveObject = self._ParentBox.GetObjectFromPos((self._X,self._Y-Y))
+            if AboveObject == VOID or AboveObject == EDGE:
+                break
+            if AboveObject.Element == "water":
+                self._ParentBox.RemoveAtPos(AboveObject.GetPos())
+                self._ParentBox.RemoveAtPos(self.GetPos())
+                self._ParentBox.CreateAtPos(self.GetPos(),"mud",self._Temperature)
+                break
+            elif AboveObject.Element == "dirt":
+                if self._TimeSinceLastMove > 150:
+                    DirtAbove += 1
+            elif AboveObject.Element == "compresseddirt" and self._TimeSinceLastMove > 150:
+                self._ParentBox.RemoveAtPos(self.GetPos())
+                self._ParentBox.CreateAtPos(self.GetPos(),"compresseddirt",self._Temperature)
+                break
+            else:
+                break
+        else:
+            if DirtAbove > 7:
+                self._ParentBox.RemoveAtPos(self.GetPos())
+                self._ParentBox.CreateAtPos(self.GetPos(),"compresseddirt",self._Temperature)
+                
+            
 
 class Mud(Falling):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "mud"
         self.DefaultColour = (71,56,13)
         Red = self.DefaultColour[0] + random.randrange(-10,10)
         Green = self.DefaultColour[1] + random.randrange(-10,10)
         Blue = self.DefaultColour[2] + random.randrange(-10,10)
         self.Colour = (Red,Green,Blue)
+        self._Density = 1
+        self._SkipChance = 0.9
+        self._MaxSkip = 200
 
-    def Tick(self):
-        if self._DecideSkip():
-            return True
-        self._TimeSinceLastMove += 1
-        Directions = [(0,1)]
-        for Direction in Directions:
-            if self._ParentBox.Move(self,Direction):
-                self._TimeSinceLastMove = 0
-                break
         
 
 class Salt(Falling):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "salt"
         self.DefaultColour = (200,200,200)
         Red = self.DefaultColour[0] + random.randrange(-10,10)
@@ -373,31 +420,49 @@ class Salt(Falling):
         if AboveObject != VOID and AboveObject != EDGE and AboveObject.Element == "water":
             self._ParentBox.RemoveAtPos(AboveObject.GetPos())
             self._ParentBox.RemoveAtPos(self.GetPos())
-            self._ParentBox.CreateAtPos(self.GetPos(),"saltwater")
+            self._ParentBox.CreateAtPos(self.GetPos(),"saltwater",self._Temperature)
 
         
             
 
 class Stationary(Solid):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self._SkipChance = 0.1
         self._MaxSkips = 30
     def CanReplace(self,Other,Direction=(0,0)):
         return False
 
 class Stone(Stationary):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self._SkipChance = 1
         self._MaxSkips = float("inf")
         self.Element = "stone"
         self.DefaultColour = (100,100,100)
         self.Colour = self.DefaultColour
 
+class Sandstone(Stationary):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self._SkipChance = 1
+        self._MaxSkips = float("inf")
+        self.Element = "sandstone"
+        self.DefaultColour = (150,130,0)
+        self.Colour = self.DefaultColour
+
+class CompressedDirt(Stationary):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self._SkipChance = 1
+        self._MaxSkips = float("inf")
+        self.Element = "compresseddirt"
+        self.DefaultColour = (170,120,20)
+        self.Colour = self.DefaultColour
+
 class HeatElement(Stationary):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "heatelement"
         self.DefaultColour = (255,0,0)
         self.Colour = self.DefaultColour
@@ -405,24 +470,23 @@ class HeatElement(Stationary):
         self._HeatRadius = 5
         
     def Tick(self):
-        super().Tick()
-        if self._DecideSkip():
+        if super().Tick():
             return True
         Positions = Box.GetCirclePos((self._X,self._Y),self._HeatRadius)
         for Pos in Positions:
             self._ParentBox.ChangeTempAtPos(Pos,1,self._MaxHeat)
 
 class Duplicator(Stationary):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "duplicator"
         self.DefaultColour = (252, 3, 215)
         self.Colour = self.DefaultColour
         self._SkipChance = 0.25
 
     def Tick(self):
-        super().Tick()
-        if self._DecideSkip():
+        
+        if super().Tick():
             return True
         Original = self._ParentBox.GetObjectFromPos((self._X,self._Y-1))
         Duplicated = False
@@ -434,16 +498,15 @@ class Duplicator(Stationary):
             self._TimeSinceLastMove = 0
 
 class Blackhole(Stationary):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "blackhole"
         self.DefaultColour = (252, 111, 3)
         self.Colour = self.DefaultColour
         self._SkipChance = 0.25
 
     def Tick(self):
-        super().Tick()
-        if self._DecideSkip():
+        if super().Tick():
             return True
         Positions = Box.GetCirclePos((self._X,self._Y),5)
         Removed = False
@@ -456,12 +519,12 @@ class Blackhole(Stationary):
             self._TimeSinceLastMove = 0
 
 class Liquid(Matter):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self._Density = 0.5
 
     def Tick(self):
-        if self._DecideSkip():
+        if super().Tick():
             return True
         # Down then left then right
         for Direction in ((0,1),(-1,0),(1,0)):
@@ -474,8 +537,8 @@ class Liquid(Matter):
 
 
 class Water(Liquid):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "water"
         self.DefaultColour = (0,0,189)
         Red = self.DefaultColour[0]
@@ -486,14 +549,14 @@ class Water(Liquid):
     def Tick(self):
         if super().Tick():
             return True
-        if self._Temperature >= 100:
+        if self._Temperature >= 125:
             self._ParentBox.RemoveAtPos(self.GetPos())
-            self._ParentBox.CreateAtPos(self.GetPos(),"steam")
+            self._ParentBox.CreateAtPos(self.GetPos(),"steam",Temperature=self._Temperature)
         
 
 class SaltWater(Liquid):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "saltwater"
         self.DefaultColour = (75,75,189)
         Red = self.DefaultColour[0] + random.randrange(-10,10)
@@ -503,12 +566,12 @@ class SaltWater(Liquid):
         self._Density = 0.51
 
 class Gas(Matter):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self._Density = 0.1
 
     def Tick(self):
-        if self._DecideSkip():
+        if super().Tick():
             return True
         # Up then left then right
         for Direction in ((0,-1),(-1,0),(1,0)):
@@ -519,14 +582,21 @@ class Gas(Matter):
 
 
 class Steam(Gas):
-    def __init__(self,Pos,Parent):
-        super().__init__(Pos,Parent)
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
         self.Element = "steam"
         self.DefaultColour = (200,200,200)
         Red = self.DefaultColour[0] + random.randrange(-5,5)
         Green = self.DefaultColour[1] + random.randrange(-5,5)
         Blue = self.DefaultColour[2] + random.randrange(-5,5)
         self.Colour = (Red,Green,Blue)
+
+    def Tick(self):
+        if super().Tick():
+            return True
+        if self._Temperature < 75:
+            self._ParentBox.RemoveAtPos(self.GetPos())
+            self._ParentBox.CreateAtPos(self.GetPos(),"water")
 
 
 # Window
@@ -546,7 +616,9 @@ Elements = {"sand":Sand,
             "heatelement":HeatElement,
             "duplicator":Duplicator,
             "blackhole":Blackhole,
-            "steam":Steam}
+            "steam":Steam,
+            "sandstone":Sandstone,
+            "compresseddirt":CompressedDirt}
 PlaceableElementsList = ["sand","water","stone","salt","dirt","heatelement","duplicator","blackhole","DELETE"]
 ElementsList = list(Elements.keys())
 VOID = " "
