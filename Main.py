@@ -59,6 +59,18 @@ class Box():
         else:
             return EDGE
 
+    def FindInDirection(self,StartPos,Direction,Length,Target):
+        for Progress in range(1,Length+1):
+            CurrentPosition = (StartPos[0] + Direction[0]*Progress,StartPos[1] + Direction[1]*Progress)
+            CurrentObject = self.GetObjectFromPos(CurrentPosition)
+            if CurrentObject == Target:
+                return CurrentPosition
+            elif type(CurrentObject).__mro__[-2] == Matter and CurrentObject.Element == Target:
+                return CurrentPosition
+                      
+        return None
+            
+
     def GetTemperature(self):
         return self.__Temperature
 
@@ -114,9 +126,9 @@ class Box():
         
     def CheckForUserInputs(self):
         Mouse = pygame.mouse.get_pressed()
+        MousePos = pygame.mouse.get_pos()
+        PosX,PosY,Inside = self.MouseToCoords(MousePos)
         if Mouse[0]:
-            MousePos = pygame.mouse.get_pos()
-            PosX,PosY,Inside = self.MouseToCoords(MousePos)
             if Inside:
                 if self.PlaceRadius > 1:
                     Positions = Box.GetCirclePos((PosX,PosY),self.PlaceRadius)
@@ -130,8 +142,7 @@ class Box():
         if Mouse[2]:
             if pygame.time.get_ticks() - self.__M2Debouce > self.__M2Cooldown:
                 self.__M2Debouce = pygame.time.get_ticks()
-                self.ChangeCurrentPlacing(1)
-                print(f"now placing {self.__CurrentPlacing}")
+                print(f"Your mouse is at {PosX,PosY} and is{'' if Inside else ' not'} inside the box")
 
         Buttons = pygame.key.get_pressed()
         NewRadius = self.PlaceRadius
