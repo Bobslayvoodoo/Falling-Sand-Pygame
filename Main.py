@@ -294,9 +294,9 @@ class Matter():
             return True
         self._TimeSinceLastMove += 1
         if self._Temperature < self._ParentBox.GetTemperature():
-            self._Temperature += 1
+            self._Temperature += 0.2
         elif self._Temperature > self._ParentBox.GetTemperature():
-            self._Temperature -= 1
+            self._Temperature -= 0.2
         return
 
 class Solid(Matter):
@@ -610,11 +610,7 @@ class Steam(Gas):
             self._ParentBox.CreateAtPos(self.GetPos(),"water")
 
 
-# Window
-DisplayInfo = pygame.display.Info()
-ScreenWidth = int(DisplayInfo.current_w*0.8)
-ScreenHeight = int(DisplayInfo.current_h*0.8)
-Screen = pygame.display.set_mode((ScreenWidth,ScreenHeight))
+
 
 # pre game
 Elements = {"sand":Sand,
@@ -637,6 +633,10 @@ EDGE = "|"
 Clock = pygame.time.Clock()
 FPSLimit = 60
 TileSize = 10
+DisplayInfo = pygame.display.Info()
+ScreenWidth = int(DisplayInfo.current_w*0.8) // TileSize * TileSize
+ScreenHeight = int(DisplayInfo.current_h*0.8) // TileSize * TileSize
+Screen = pygame.display.set_mode((ScreenWidth,ScreenHeight))
 CurrentBox = Box()
 CurrentBox.SetUpButtons()
 Run = True
