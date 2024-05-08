@@ -215,12 +215,24 @@ class Button:
         if ElementObject == "DELETE":
             self.__Colour = (255,255,0)
             self.__Element = ElementObject
+            Text = "DELETE"
         else:
             self.__Colour = ElementObject.DefaultColour
             self.__Element = ElementObject.Element
+            Text = self.__Element
+            
+        FontSize = 25
+        Font = pygame.font.Font('freesansbold.ttf', FontSize)
+        self.__FontRender = Font.render(Text, True, (0,0,0))
+        self.__FontRectangle = self.__FontRender.get_rect()
+        self.__FontRectangle.center = self.__Rectangle.center
+        
 
     def Draw(self):
         pygame.draw.rect(Screen,self.__Colour,self.__Rectangle)
+        Screen.blit(self.__FontRender, self.__FontRectangle)
+        
+
 
     def CheckForSelect(self,MousePos):
         if self.__Rectangle.collidepoint(MousePos):

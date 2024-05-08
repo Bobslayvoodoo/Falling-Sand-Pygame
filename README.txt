@@ -8,8 +8,6 @@ Numbers 0 to 9 - select area of effect 1 being the smallest and 0 being the bigg
 
 
 Ideas for later additions/improvements:
-- Text for element selection
-- sand compresses to sandstone
 - Pause indicator
 - Optimisations 
 - Give every object proper densities
