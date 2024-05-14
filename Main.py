@@ -16,7 +16,7 @@ class Box():
         self.__PauseDebouce = 0
         self.__PauseCooldown = 200
         self.__Temperature = 15
-        
+        self._HeatRadius = 0
         self.__Buttons = []
         self.__ButtonYSize = 50
         self.__Paused = False
@@ -74,11 +74,17 @@ class Box():
     def GetTemperature(self):
         return self.__Temperature
 
-    def RemoveAtPos(self,Pos):
+    def RemoveAtPos(self,Pos,Strength=None):
         Object = self.GetObjectFromPos(Pos)
-        if Object != EDGE:
-            self.__ObjectQueue.remove(Object)
-            self.__Inside[Pos[1]][Pos[0]] = VOID
+        
+        if Object != EDGE and Object != VOID:
+            OtherStrength = Object.GetStrength()
+            if not Strength or Strength > OtherStrength:
+                self.__ObjectQueue.remove(Object)
+                self.__Inside[Pos[1]][Pos[0]] = VOID
+                return True
+            
+        return False
 
     def ChangeTempAtPos(self,Pos,Change,Limit):
         Object = self.GetObjectFromPos(Pos)
@@ -253,6 +259,9 @@ class Matter():
         self._Skips = 0
         self._MaxSkips = 30
         self._Density = 1
+        self._Strength = 1
+        self._MinHeat = -273
+        self._MaxHeat = float("inf")
 
     def GetPos(self):
         return (self._X,self._Y)
@@ -263,6 +272,9 @@ class Matter():
 
     def GetDensity(self):
         return self._Density
+
+    def GetStrength(self):
+        return self._Strength
 
     def ChangeTemp(self,Change,Limit):
         self._Temperature += Change
@@ -464,6 +476,7 @@ class Stone(Stationary):
         self.Element = "stone"
         self.DefaultColour = (100,100,100)
         self.Colour = self.DefaultColour
+        self._Strength = 3
 
 class Sandstone(Stationary):
     def __init__(self,Pos,Parent,Temperature):
@@ -588,6 +601,31 @@ class SaltWater(Liquid):
         self.Colour = (Red,Green,Blue)
         self._Density = 0.51
 
+class Lava(Liquid):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self.Element = "lava"
+        self.DefaultColour = (230,10,10)
+        Red = self.DefaultColour[0] + random.randrange(-10,10)
+        Green = self.DefaultColour[1] + random.randrange(-10,10)
+        Blue = self.DefaultColour[2] + random.randrange(-10,10)
+        self.Colour = (Red,Green,Blue)
+        self._Density = 0.52
+        self._SkipChance = 0.9
+        self._MaxSkips = 60
+        self._Strength = 2
+        self._HeatRadius = 5
+
+    def Tick(self):
+        if super().Tick():
+            return True
+        Pos = (self._X,self._Y+1)
+        self._ParentBox.RemoveAtPos(Pos,self._Strength)
+        Positions = Box.GetCirclePos((self._X,self._Y),self._HeatRadius)
+        for Pos in Positions:
+            self._ParentBox.ChangeTempAtPos(Pos,1,self._MaxHeat)
+        
+
 class Gas(Matter):
     def __init__(self,Pos,Parent,Temperature):
         super().__init__(Pos,Parent,Temperature)
@@ -637,8 +675,9 @@ Elements = {"sand":Sand,
             "blackhole":Blackhole,
             "steam":Steam,
             "sandstone":Sandstone,
-            "compresseddirt":CompressedDirt}
-PlaceableElementsList = ["sand","water","stone","salt","dirt","heatelement","duplicator","blackhole","DELETE"]
+            "compresseddirt":CompressedDirt,
+            "lava":Lava}
+PlaceableElementsList = ["sand","water","stone","salt","dirt","heatelement","duplicator","blackhole","lava","DELETE"]
 ElementsList = list(Elements.keys())
 VOID = " "
 EDGE = "|"
