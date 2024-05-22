@@ -11,9 +11,11 @@ class Box():
         self.CurrentElementNumber = 0
         self.PlaceRadius = 1
         self.__CurrentPlacing = PlaceableElementsList[self.CurrentElementNumber]
+        self.__DestructivePlacing = False
         self.__M2Debouce = 0
         self.__M2Cooldown = 200
         self.__PauseDebouce = 0
+        self.__DestructivePlacingDebouce = 0
         self.__PauseCooldown = 200
         self.__Temperature = 15
         self._HeatRadius = 0
@@ -81,6 +83,7 @@ class Box():
             OtherStrength = Object.GetStrength()
             if not Strength or Strength > OtherStrength:
                 self.__ObjectQueue.remove(Object)
+                Object.ClearConnections()
                 self.__Inside[Pos[1]][Pos[0]] = VOID
                 return True
             
@@ -110,18 +113,23 @@ class Box():
         return False
         
     def CreateAtPos(self,Pos,Type,Temperature=None):
+        Object = self.GetObjectFromPos(Pos)
         if not Type in Elements.keys():
-            if self.GetObjectFromPos(Pos) != VOID:
+            if Object != VOID:
                 self.RemoveAtPos(Pos)
             return
+        if Object == EDGE:
+            return
         NewElement = Elements[Type]
-        if self.GetObjectFromPos(Pos) == VOID:
+        if Object == VOID or self.__DestructivePlacing:
             if Temperature == None:
                 Temperature = self.__Temperature
                 
             NewElement = NewElement(Pos,self,Temperature)
             self.__ObjectQueue.append(NewElement)
+            self.RemoveAtPos(Pos)
             self.__Inside[Pos[1]][Pos[0]] = NewElement
+            return NewElement
             
 
     def Tick(self):
@@ -174,10 +182,12 @@ class Box():
         elif Buttons[pygame.K_0]:
             NewRadius = 100
         elif Buttons[pygame.K_SPACE]:
-            
             if pygame.time.get_ticks() - self.__PauseDebouce > self.__PauseCooldown:
                 self.__PauseDebouce = pygame.time.get_ticks()
                 self.__Paused = not self.__Paused
+        elif Buttons[pygame.K_e] and pygame.time.get_ticks() - self.__DestructivePlacingDebouce > self.__PauseCooldown:
+            self.__DestructivePlacingDebouce = pygame.time.get_ticks()
+            self.__DestructivePlacing = not self.__DestructivePlacing
 
         self.PlaceRadius = NewRadius
 
@@ -227,7 +237,7 @@ class Button:
             self.__Element = ElementObject.Element
             Text = self.__Element
             
-        FontSize = 25
+        FontSize = 20
         Font = pygame.font.Font('freesansbold.ttf', FontSize)
         self.__FontRender = Font.render(Text, True, (0,0,0))
         self.__FontRectangle = self.__FontRender.get_rect()
@@ -276,6 +286,9 @@ class Matter():
     def GetStrength(self):
         return self._Strength
 
+    def GetTemp(self):
+        return self._Temperature
+
     def ChangeTemp(self,Change,Limit):
         self._Temperature += Change
         if Change >0 and self._Temperature > Limit:
@@ -312,6 +325,9 @@ class Matter():
             return True
         self._Skips = 0
         return False
+
+    def ClearConnections(self):
+        return
 
     def Tick(self):
         if self._DecideSkip():
@@ -457,7 +473,24 @@ class Salt(Falling):
             self._ParentBox.RemoveAtPos(self.GetPos())
             self._ParentBox.CreateAtPos(self.GetPos(),"saltwater",self._Temperature)
 
-        
+class Seed(Falling):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self.Element = "seed"
+        self.DefaultColour = (141, 111, 100)
+        Red = self.DefaultColour[0] + random.randrange(-10,10)
+        Green = self.DefaultColour[1] + random.randrange(-10,10)
+        Blue = self.DefaultColour[2] + random.randrange(-10,10)
+        self.Colour = (Red,Green,Blue)
+
+    def Tick(self):
+        if super().Tick():
+            return True
+        BelowObject = self._ParentBox.GetObjectFromPos((self._X,self._Y+1))
+        if BelowObject != VOID and BelowObject != EDGE and (BelowObject.Element == "mud" or BelowObject.Element == "dirt"):
+            self._ParentBox.RemoveAtPos(BelowObject.GetPos())
+            self._ParentBox.RemoveAtPos(self.GetPos())
+            self._ParentBox.CreateAtPos(BelowObject.GetPos(),"root",self._Temperature)
             
 
 class Stationary(Solid):
@@ -553,6 +586,132 @@ class Blackhole(Stationary):
                 Removed = True
         if Removed:
             self._TimeSinceLastMove = 0
+
+class Plant(Stationary):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self._Parent = None
+        self._GrowthPoints = 0
+        self._Children = []
+
+    def GiveGrowPoints(self,Points):
+        self._GrowthPoints += Points
+        
+    def SetParent(self,P):
+        if not self._Parent:
+            self._Parent = P
+
+    def RemoveChild(self,ChildToRemove):
+        if ChildToRemove in self._Children:
+            self._Children.remove(ChildToRemove)
+
+    def GiveChild(self,NewChild):
+        self._Children.append(NewChild)
+
+    def ClearConnections(self):
+        super().ClearConnections()
+        if self._Parent:
+            self._Parent.RemoveChild(self)
+        self._Parent = None
+
+        if self._Children:
+            for Child in self._Children:
+                Child.SetParent(None)
+        self._Children = []
+
+class Root(Plant):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self.Element = "root"
+        self.DefaultColour = (120, 100, 85)
+        Red = self.DefaultColour[0] + random.randrange(-10,10)
+        Green = self.DefaultColour[1] + random.randrange(-10,10)
+        Blue = self.DefaultColour[2] + random.randrange(-10,10)
+        self.Colour = (Red,Green,Blue)
+        self._CanGrowIn = ["mud","dirt","sand"]
+        
+
+    def Tick(self):
+        if super().Tick():
+            return True
+
+        Direction = random.choice(((0,1),(-1,1),(1,1),(1,0),(-1,0)))
+        Pos = (self._X+Direction[0],self._Y+Direction[1])
+        Object = self._ParentBox.GetObjectFromPos(Pos)
+        if type(Object) != str and Object.Element in self._CanGrowIn and len(self._Children) < 2 and self._GrowthPoints  > 0:
+            self._GrowthPoints -= 1
+            self._ParentBox.RemoveAtPos(Pos)
+            NewRoot = self._ParentBox.CreateAtPos(Pos,"root",self._Temperature)
+            NewRoot.SetParent(self)
+            self._Children.append(NewRoot)
+
+
+        elif self._Parent and self._GrowthPoints > 0:
+            self._GrowthPoints -= 1
+            self._Parent.GiveGrowPoints(1)
+
+        elif not self._Parent:
+            Pos = (self._X,self._Y-1)
+            Object = self._ParentBox.GetObjectFromPos(Pos)
+            if Object == VOID:
+                self._GrowthPoints -= 1
+                self._ParentBox.RemoveAtPos(Pos)
+                NewStem = self._ParentBox.CreateAtPos(Pos,"stem",self._Temperature)
+                NewStem.SetParent(self)
+                self._Parent = NewStem
+                
+            elif type(Object) != str and Object.Element == "root":
+                self._Parent = Object
+                Object.GiveChild(self)
+            
+            
+
+        Positions = Box.GetCirclePos((self._X,self._Y),3)
+        for Pos in Positions:
+            Object = self._ParentBox.GetObjectFromPos(Pos)
+            if type(Object) != str and Object.Element == "mud":
+                self._ParentBox.RemoveAtPos(Pos)
+                NewRoot = self._ParentBox.CreateAtPos(Pos,"dirt",Object.GetTemp())
+                self._GrowthPoints += 1
+
+                
+class Stem(Plant):
+    def __init__(self,Pos,Parent,Temperature):
+        super().__init__(Pos,Parent,Temperature)
+        self.Element = "stem"
+        self.DefaultColour = (20, 200, 20)
+        Red = self.DefaultColour[0] + random.randrange(-10,10)
+        Green = self.DefaultColour[1] + random.randrange(-10,10)
+        Blue = self.DefaultColour[2] + random.randrange(-10,10)
+        self.Colour = (Red,Green,Blue)
+        self._CanGrowIn = [VOID]
+
+    def Tick(self):
+        if super().Tick():
+            return True
+
+        
+        Directions = ((0,-1),(-1,-1),(1,-1),(1,0),(-1,0))
+        Weights = (     5,       3,     3,    1,     1 )
+        Direction = random.choices(Directions,weights=Weights)[0]
+        Pos = (self._X+Direction[0],self._Y+Direction[1])
+        Object = self._ParentBox.GetObjectFromPos(Pos)
+        if (Object in self._CanGrowIn or (type(Object) != str and Object.Element in self._CanGrowIn)) and len(self._Children) < 2 and self._GrowthPoints  > 0:
+            self._GrowthPoints -= 1
+            self._ParentBox.RemoveAtPos(Pos)
+            NewStem = self._ParentBox.CreateAtPos(Pos,"stem",self._Temperature)
+            NewStem.SetParent(self)
+            self._Children.append(NewStem)
+
+
+        elif len(self._Children) >= 2 and self._GrowthPoints > 0:
+            self._GrowthPoints -= 1
+            random.choice(self._Children).GiveGrowPoints(1)
+        
+        
+    
+                
+        
 
 class Liquid(Matter):
     def __init__(self,Pos,Parent,Temperature):
@@ -676,8 +835,12 @@ Elements = {"sand":Sand,
             "steam":Steam,
             "sandstone":Sandstone,
             "compresseddirt":CompressedDirt,
-            "lava":Lava}
-PlaceableElementsList = ["sand","water","stone","salt","dirt","heatelement","duplicator","blackhole","lava","DELETE"]
+            "lava":Lava,
+            "seed":Seed,
+            "root":Root,
+            "stem":Stem
+            }
+PlaceableElementsList = ["sand","water","stone","salt","dirt","heatelement","duplicator","blackhole","lava","seed","DELETE"]
 ElementsList = list(Elements.keys())
 VOID = " "
 EDGE = "|"
