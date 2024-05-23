@@ -11,17 +11,14 @@ class Box():
         self.CurrentElementNumber = 0
         self.PlaceRadius = 1
         self.__CurrentPlacing = PlaceableElementsList[self.CurrentElementNumber]
+        self.__Paused = False
+        self.__Placing = False
         self.__DestructivePlacing = False
-        self.__M2Debouce = 0
-        self.__M2Cooldown = 200
-        self.__PauseDebouce = 0
-        self.__DestructivePlacingDebouce = 0
-        self.__PauseCooldown = 200
         self.__Temperature = 15
         self._HeatRadius = 0
         self.__Buttons = []
         self.__ButtonYSize = 50
-        self.__Paused = False
+        
         for y in range((ScreenHeight-self.__ButtonYSize)//TileSize):
             self.__Inside.append([])
             for x in range(ScreenWidth//TileSize):
@@ -137,12 +134,23 @@ class Box():
             for CurrentT in self.__ObjectQueue:
                 CurrentT.Tick()
 
+    def __MouseDown(self,Event):
         
-    def CheckForUserInputs(self):
-        Mouse = pygame.mouse.get_pressed()
-        MousePos = pygame.mouse.get_pos()
-        PosX,PosY,Inside = self.MouseToCoords(MousePos)
-        if Mouse[0]:
+        if Event.button == 1:
+            self.__Placing = True
+            self.__MouseMove(Event)
+            
+        elif Event.button == 3:
+            PosX,PosY,Inside = self.MouseToCoords(Event.pos)
+            print(f"Your mouse is at {PosX,PosY} and is{'' if Inside else ' not'} inside the box")
+
+    def __MouseMove(self,Event,Pos=None):
+        if Pos:
+            PosX,PosY,Inside = self.MouseToCoords(Pos)
+        else:
+            PosX,PosY,Inside = self.MouseToCoords(Event.pos)
+        
+        if self.__Placing:
             if Inside:
                 if self.PlaceRadius > 1:
                     Positions = Box.GetCirclePos((PosX,PosY),self.PlaceRadius)
@@ -153,43 +161,54 @@ class Box():
             else:
                 for B in self.__Buttons:
                     B.CheckForSelect((PosX,PosY))
-        if Mouse[2]:
-            if pygame.time.get_ticks() - self.__M2Debouce > self.__M2Cooldown:
-                self.__M2Debouce = pygame.time.get_ticks()
-                print(f"Your mouse is at {PosX,PosY} and is{'' if Inside else ' not'} inside the box")
 
-        Buttons = pygame.key.get_pressed()
+    def __MouseUp(self,Event):
+        if Event.button == 1:
+            self.__Placing = False
+
+    def __KeyDown(self,Event):
         NewRadius = self.PlaceRadius
-        #Numbers:
-        if Buttons[pygame.K_1]:
+        if Event.key == pygame.K_1:
             NewRadius = 1
-        elif Buttons[pygame.K_2]:
+        elif Event.key == pygame.K_2:
             NewRadius = 1.1
-        elif Buttons[pygame.K_3]:
+        elif Event.key == pygame.K_3:
             NewRadius = 1.8
-        elif Buttons[pygame.K_4]:
+        elif Event.key == pygame.K_4:
             NewRadius = 3.2
-        elif Buttons[pygame.K_5]:
+        elif Event.key == pygame.K_5:
             NewRadius = 5
-        elif Buttons[pygame.K_6]:
+        elif Event.key == pygame.K_6:
             NewRadius = 6
-        elif Buttons[pygame.K_7]:
+        elif Event.key == pygame.K_7:
             NewRadius = 7
-        elif Buttons[pygame.K_8]:
+        elif Event.key == pygame.K_8:
             NewRadius = 8
-        elif Buttons[pygame.K_9]:
+        elif Event.key == pygame.K_9:
             NewRadius = 9
-        elif Buttons[pygame.K_0]:
+        elif Event.key == pygame.K_0:
             NewRadius = 100
-        elif Buttons[pygame.K_SPACE]:
-            if pygame.time.get_ticks() - self.__PauseDebouce > self.__PauseCooldown:
-                self.__PauseDebouce = pygame.time.get_ticks()
-                self.__Paused = not self.__Paused
-        elif Buttons[pygame.K_e] and pygame.time.get_ticks() - self.__DestructivePlacingDebouce > self.__PauseCooldown:
-            self.__DestructivePlacingDebouce = pygame.time.get_ticks()
+
+        elif Event.key == pygame.K_SPACE:
+            self.__Paused = not self.__Paused
+
+        elif Event.key == pygame.K_e:
             self.__DestructivePlacing = not self.__DestructivePlacing
 
         self.PlaceRadius = NewRadius
+        
+    def CheckForUserInputs(self,Event):
+        
+        if Event.type == pygame.MOUSEBUTTONDOWN:
+            self.__MouseDown(Event)
+        elif Event.type == pygame.MOUSEMOTION:
+            self.__MouseMove(Event)
+        elif Event.type == pygame.MOUSEBUTTONUP:
+            self.__MouseUp(Event)
+            
+        elif Event.type == pygame.KEYDOWN:
+            self.__KeyDown(Event)
+
 
     def ChangeCurrentPlacing(self,Change):
         if type(Change) == int:
@@ -215,7 +234,10 @@ class Box():
             self.__Buttons.append(NewButton)
 
     def Draw(self):
-        self.CheckForUserInputs()
+        if self.__Placing:
+            Mouse = pygame.mouse.get_pressed()
+            Pos = pygame.mouse.get_pos()
+            self.__MouseMove(None,Pos)
         for Y,Row in enumerate(self.__Inside):
             for X,T in enumerate(Row):
                 if T != VOID:
@@ -692,7 +714,7 @@ class Stem(Plant):
 
         
         Directions = ((0,-1),(-1,-1),(1,-1),(1,0),(-1,0))
-        Weights = (     5,       3,     3,    1,     1 )
+        Weights = (     10,       6,     6,    1,     1 )
         Direction = random.choices(Directions,weights=Weights)[0]
         Pos = (self._X+Direction[0],self._Y+Direction[1])
         Object = self._ParentBox.GetObjectFromPos(Pos)
@@ -704,7 +726,7 @@ class Stem(Plant):
             self._Children.append(NewStem)
 
 
-        elif len(self._Children) >= 2 and self._GrowthPoints > 0:
+        elif self._Children and self._GrowthPoints > 0:
             self._GrowthPoints -= 1
             random.choice(self._Children).GiveGrowPoints(1)
         
@@ -859,6 +881,8 @@ while Run:
     for Event in pygame.event.get():
         if Event.type == pygame.QUIT:
             Run = False
+        else:
+            CurrentBox.CheckForUserInputs(Event)
 
     Screen.fill((0,0,0))
     CurrentBox.Tick()
