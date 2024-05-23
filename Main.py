@@ -135,7 +135,6 @@ class Box():
                 CurrentT.Tick()
 
     def __MouseDown(self,Event):
-        
         if Event.button == 1:
             self.__Placing = True
             self.__MouseMove(Event)
@@ -144,11 +143,24 @@ class Box():
             PosX,PosY,Inside = self.MouseToCoords(Event.pos)
             print(f"Your mouse is at {PosX,PosY} and is{'' if Inside else ' not'} inside the box")
 
+        elif Event.button == 4:
+            self.PlaceRadius *= 1.1
+            MaxRadius = max(len(self.__Inside),len(self.__Inside[0]))
+            if self.PlaceRadius > MaxRadius:
+                self.PlaceRadius = MaxRadius
+            
+        elif Event.button == 5:
+            self.PlaceRadius *= 0.9
+            if self.PlaceRadius < 1:
+                self.PlaceRadius = 1
+
     def __MouseMove(self,Event,Pos=None):
         if Pos:
             PosX,PosY,Inside = self.MouseToCoords(Pos)
         else:
             PosX,PosY,Inside = self.MouseToCoords(Event.pos)
+
+        
         
         if self.__Placing:
             if Inside:
